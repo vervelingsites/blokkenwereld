@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="nl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blokkenwereld</title>
+<style>
+:root{--bg:#1b1f24;--fg:#fff}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
+canvas{display:block}
+#ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.6);text-align:center;cursor:pointer;padding:16px}
+#ov h1{font-size:clamp(2rem,6vw,3.5rem);margin:0 0 8px;letter-spacing:2px}
+#ov p{margin:4px 0;opacity:.9}
+#ov b{background:#fff2;padding:2px 8px;border-radius:4px}
+#cross{position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px;pointer-events:none}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;mix-blend-mode:difference}
+#cross:before{left:9px;top:0;width:2px;height:20px}#cross:after{top:9px;left:0;height:2px;width:20px}
+#bar{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);display:flex;gap:6px}
+.s{width:48px;height:48px;border:3px solid #555;background:#0006;display:flex;align-items:flex-end;justify-content:flex-start;font-size:11px;box-sizing:border-box;padding:2px}
+.s.a{border-color:#fff}
+.s i{display:block;position:absolute;width:28px;height:28px;margin:5px 6px}
+.s{position:relative}
+</style></head><body>
+<div id="cross"></div><div id="bar"></div>
+<div id="ov"><h1>⛏ BLOKKENWERELD</h1>
+<p>Klik om te spelen</p>
+<p><b>WASD</b> lopen · <b>Spatie</b> springen · <b>Shift</b> rennen</p>
+<p><b>Linkermuis</b> breken · <b>Rechtermuis</b> plaatsen · <b>1–6</b> / scroll blok kiezen</p></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const W=64,H=28,D=64,N=[null,'Gras','Aarde','Steen','Hout','Blad','Planken'];
+const COL=[null,[.35,.7,.25],[.5,.35,.2],[.5,.5,.52],[.4,.28,.15],[.2,.5,.15],[.72,.55,.32]];
+const SIDE={1:[.5,.36,.2]};
+const wd=new Uint8Array(W*H*D),ix=(x,y,z)=>x+W*(z+D*y);
+const get=(x,y,z)=>(x<0||y<0||z<0||x>=W||y>=H||z>=D)?0:wd[ix(x,y,z)];
+const hash=(x,y,z)=>{let h=Math.sin(x*12.9898+y*78.233+z*37.719)*43758.5453;return h-Math.floor(h)};
+// wereld genereren
+const hh=(x,z)=>Math.floor(9+4*Math.sin(x*.11)+4*Math.cos(z*.09)+2*Math.sin((x+z)*.2));
+for(let x=0;x<W;x++)for(let z=0;z<D;z++){const h=hh(x,z);for(let y=0;y<=h;y++)wd[ix(x,y,z)]=y==h?1:y>h-3?2:3}
+for(let i=0;i<40;i++){const x=3+Math.floor(hash(i,1,2)*(W-6)),z=3+Math.floor(hash(i,3,4)*(D-6)),h=hh(x,z);
+ for(let y=1;y<=4;y++)wd[ix(x,h+y,z)]=4;
+ for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=3;dy<=5;dy++){if(Math.abs(dx)+Math.abs(dz)+(dy>4?1:0)<4&&!wd[ix(x+dx,h+dy,z+dz)])wd[ix(x+dx,h+dy,z+dz)]=5}}
+// three.js
+const R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));
+R.setSize(innerWidth,innerHeight);document.body.prepend(R.domElement);
+const sc=new THREE.Scene();sc.background=new THREE.Color(0x87ceeb);sc.fog=new THREE.Fog(0x87ceeb,25,70);
+const cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,200);cam.rotation.order='YXZ';
+addEventListener('resize',()=>{R.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()});
+const F=[[[1,0,0],[[1,0,0],[1,1,0],[1,1,1],[1,0,1]],.8],[[-1,0,0],[[0,0,1],[0,1,1],[0,1,0],[0,0,0]],.8],
+[[0,1,0],[[0,1,1],[1,1,1],[1,1,0],[0,1,0]],1],[[0,-1,0],[[0,0,0],[1,0,0],[1,0,1],[0,0,1]],.5],
+[[0,0,1],[[1,0,1],[1,1,1],[0,1,1],[0,0,1]],.65],[[0,0,-1],[[0,0,0],[0,1,0],[1,1,0],[1,0,0]],.65]];
+let mesh;
+function build(){
+ const p=[],c=[],ind=[];let n=0;
+ for(let y=0;y<H;y++)for(let z=0;z<D;z++)for(let x=0;x<W;x++){const b=wd[ix(x,y,z)];if(!b)continue;
+  const v=.9+.2*hash(x,y,z);
+  for(const [d,cs,s] of F){if(get(x+d[0],y+d[1],z+d[2]))continue;
+   const base=(d[1]!==1&&SIDE[b])?SIDE[b]:COL[b];
+   for(const q of cs){p.push(x+q[0],y+q[1],z+q[2]);c.push(base[0]*s*v,base[1]*s*v,base[2]*s*v)}
+   ind.push(n,n+1,n+2,n,n+2,n+3);n+=4}}
+ const g=new THREE.BufferGeometry();
+ g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
+ g.setAttribute('color',new THREE.Float32BufferAttribute(c,3));g.setIndex(ind);
+ if(mesh){sc.remove(mesh);mesh.geometry.dispose()}
+ mesh=new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true}));sc.add(mesh)}
+build();
+const sel=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002,1.002,1.002)),new THREE.LineBasicMaterial({color:0}));
+sel.visible=false;sc.add(sel);
+// speler
+const P={x:W/2,y:hh(W/2|0,D/2|0)+3,z:D/2,vx:0,vy:0,vz:0,yaw:0,pitch:0,ground:false},w=.3,ht=1.8;
+const hit=(x,y,z)=>{for(let i=Math.floor(x-w);i<=Math.floor(x+w);i++)for(let j=Math.floor(y);j<=Math.floor(y+ht);j++)for(let k=Math.floor(z-w);k<=Math.floor(z+w);k++)if(get(i,j,k))return true;return false};
+const K={};let cur=1,locked=false;
+addEventListener('keydown',e=>{K[e.code]=true;const n=+e.key;if(n>=1&&n<=6)pick(n)});
+addEventListener('keyup',e=>K[e.code]=false);
+addEventListener('wheel',e=>pick(((cur-1+(e.deltaY>0?1:5))%6)+1));
+const bar=document.getElementById('bar');
+for(let i=1;i<=6;i++){const s=document.createElement('div');s.className='s';const c=COL[i].map(v=>v*255|0);
+ s.innerHTML=`<i style="background:rgb(${c})"></i><span style="position:relative;z-index:1;text-shadow:0 0 3px #000">${i}</span>`;s.title=N[i];bar.append(s)}
+function pick(n){cur=n;[...bar.children].forEach((e,i)=>e.classList.toggle('a',i==n-1))}pick(1);
+const ov=document.getElementById('ov');
+ov.onclick=()=>R.domElement.requestPointerLock();
+document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===R.domElement;ov.style.display=locked?'none':'flex'});
+document.addEventListener('mousemove',e=>{if(!locked)return;P.yaw-=e.movementX*.0024;P.pitch=Math.max(-1.55,Math.min(1.55,P.pitch-e.movementY*.0024))});
+// raycast
+function ray(){const o=cam.position.clone(),d=new THREE.Vector3();cam.getWorldDirection(d);let last=null;
+ for(let t=0;t<6;t+=.04){const x=Math.floor(o.x+d.x*t),y=Math.floor(o.y+d.y*t),z=Math.floor(o.z+d.z*t);
+  if(get(x,y,z))return{hit:[x,y,z],prev:last};
+  if(!last||last[0]!=x||last[1]!=y||last[2]!=z)last=[x,y,z]}return null}
+document.addEventListener('mousedown',e=>{if(!locked)return;const r=ray();if(!r)return;
+ if(e.button==0){wd[ix(...r.hit)]=0;build()}
+ else if(e.button==2&&r.prev&&get(...r.prev)==0&&r.prev[1]<H){const i=ix(...r.prev);wd[i]=cur;if(hit(P.x,P.y,P.z))wd[i]=0;else build()}});
+addEventListener('contextmenu',e=>e.preventDefault());
+// loop
+let last=performance.now();
+function loop(t){requestAnimationFrame(loop);const dt=Math.min((t-last)/1000,.05);last=t;
+ const sp=K.ShiftLeft?7:4.3,f=(K.KeyW?1:0)-(K.KeyS?1:0),s=(K.KeyD?1:0)-(K.KeyA?1:0);
+ const sn=Math.sin(P.yaw),cs=Math.cos(P.yaw);
+ let mx=(-sn*f+cs*s),mz=(-cs*f-sn*s);const l=Math.hypot(mx,mz)||1;P.vx=mx/l*sp*(f||s?1:0);P.vz=mz/l*sp*(f||s?1:0);
+ if(K.Space&&P.ground){P.vy=8.2;P.ground=false}
+ P.vy-=24*dt;
+ let nx=P.x+P.vx*dt;if(!hit(nx,P.y,P.z))P.x=nx;
+ let nz=P.z+P.vz*dt;if(!hit(P.x,P.y,nz))P.z=nz;
+ let ny=P.y+P.vy*dt;P.ground=false;
+ if(hit(P.x,ny,P.z)){if(P.vy<0)P.ground=true;P.vy=0}else P.y=ny;
+ if(P.y<-20){P.y=H;P.vy=0}
+ cam.position.set(P.x,P.y+1.6,P.z);cam.rotation.set(P.pitch,P.yaw,0);
+ const r=locked?ray():null;sel.visible=!!r;if(r)sel.position.set(r.hit[0]+.5,r.hit[1]+.5,r.hit[2]+.5);
+ R.render(sc,cam)}
+requestAnimationFrame(loop);
+</script></body></html>
